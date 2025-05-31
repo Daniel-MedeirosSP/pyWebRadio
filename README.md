@@ -1,2 +1,2 @@
-# pyWebRadio
-Agente para escutar rádios web.
+# PyWebRadio
+Suas Rádios Web a um Click!.
