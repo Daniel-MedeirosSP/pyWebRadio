@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web Rádio Player com Bootstrap</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        /* Estilos adicionais rápidos */
+        #album-cover-container {
+            max-width: 150px; /* Ajuste conforme necessário */
+            margin: 0 auto 15px auto; /* Centralizar e adicionar margem inferior */
+        }
+        #album-cover-container img {
+            max-width: 100%;
+            height: auto;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        #metadata-details p {
+            margin-bottom: 0.3rem; /* Espaçamento menor entre os parágrafos de metadados */
+        }
+    </style>
+</head>
+<body>
+
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="#">Web Rádio Player</a>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="row">
+            <div class="col-md-8 offset-md-2">
+
+                <div class="card mb-4">
+                    <div class="card-header">
+                        Tocando Agora
+                    </div>
+                    <div class="card-body">
+                        {% if current_radio %}
+                            <div class="alert alert-success" role="alert">
+                                <strong>Rádio: {{ current_radio }}</strong>
+                            </div>
+
+                            <div id="album-cover-container" class="text-center mb-3">
+                                <img id="album-cover-img" src="" alt="Capa do Álbum" style="display:none;">
+                            </div>
+
+                            <div id="metadata-display" class="alert alert-info" role="alert">
+                                <strong>Info:</strong> <span id="metadata-content">{{ initial_metadata }}</span>
+                            </div>
+                            <div id="metadata-details" class="mb-2">
+                                </div>
+
+                            <a href="{{ url_for('stop') }}" class="btn btn-danger w-100">Parar Rádio</a>
+                        {% else %}
+                            <div class="alert alert-secondary" role="alert">
+                                Nenhuma rádio tocando. Selecione uma abaixo.
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        Rádios Disponíveis
+                    </div>
+                    <ul class="list-group list-group-flush">
+                        {% if radios %}
+                            {% for radio_name_iter in radios %} {# Renomeado para evitar conflito com current_radio #}
+                                <li class="list-group-item d-flex justify-content-between align-items-center
+                                    {{ 'active' if radio_name_iter == current_radio else '' }}">
+                                    {{ radio_name_iter }}
+                                    <a href="{{ url_for('play', radio_name=radio_name_iter) }}" class="btn btn-primary btn-sm">
+                                        Tocar
+                                    </a>
+                                </li>
+                            {% endfor %}
+                        {% else %}
+                            <li class="list-group-item">Nenhuma rádio configurada.</li>
+                        {% endif %}
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let metadataIntervalId = null; // Para controlar o intervalo
+
+        function updateMetadataDisplay(data) {
+            const metadataContentSpan = document.getElementById('metadata-content');
+            const metadataDetailsDiv = document.getElementById('metadata-details');
+            const albumCoverImg = document.getElementById('album-cover-img');
+            const albumCoverContainer = document.getElementById('album-cover-container');
+
+            // Limpa displays anteriores
+            if(metadataContentSpan) metadataContentSpan.innerHTML = "Carregando...";
+            if(metadataDetailsDiv) metadataDetailsDiv.innerHTML = "";
+            if(albumCoverImg) albumCoverImg.style.display = 'none';
+
+
+            if (!data || data.error || !data.source || data.source === "none") {
+                if(metadataContentSpan) metadataContentSpan.textContent = data.error || "Nenhuma rádio selecionada ou erro.";
+                return;
+            }
+
+            if (data.source === "external_api" && data.data) {
+                const apiData = data.data;
+                if(metadataContentSpan) metadataContentSpan.innerHTML = ""; // Limpa o span principal
+                
+                let detailsHtml = '';
+                if (apiData.track) detailsHtml += `<p><strong>Música:</strong> ${apiData.track}</p>`;
+                if (apiData.artist) detailsHtml += `<p><strong>Artista:</strong> ${apiData.artist}</p>`;
+                if (apiData.album) detailsHtml += `<p><strong>Álbum:</strong> ${apiData.album}</p>`;
+                
+                if(metadataDetailsDiv) metadataDetailsDiv.innerHTML = detailsHtml || "Sem detalhes disponíveis.";
+
+                if (apiData.cover_link && albumCoverImg && albumCoverContainer) {
+                    albumCoverImg.src = apiData.cover_link;
+                    albumCoverImg.alt = apiData.album || "Capa";
+                    albumCoverImg.style.display = 'block';
+                } else if (albumCoverImg) {
+                    albumCoverImg.style.display = 'none';
+                }
+
+            } else if (data.source === "vlc" && data.data) {
+                if(metadataContentSpan) metadataContentSpan.textContent = data.data.now_playing_string || "Aguardando metadados VLC...";
+                if(metadataDetailsDiv) metadataDetailsDiv.innerHTML = ""; // Limpa detalhes da API
+                if(albumCoverImg) albumCoverImg.style.display = 'none'; // Esconde capa se for VLC
+
+            } else if (data.source === "external_api_error" || data.source === "external_api_json_error") {
+                if(metadataContentSpan) metadataContentSpan.textContent = data.error || "Erro ao carregar metadados da API.";
+            } else {
+                if(metadataContentSpan) metadataContentSpan.textContent = "Formato de metadados desconhecido.";
+            }
+        }
+
+        function fetchAndUpdateMetadata() {
+            const currentRadioNameElement = document.querySelector('.alert-success strong');
+            // Verifica se tem alguma rádio tocando (pela presença do nome da rádio no alerta de sucesso)
+            // Isso é uma forma de inferir o estado do player no frontend
+            if (!currentRadioNameElement || !currentRadioNameElement.textContent.includes("Rádio:")) {
+                 // Se não há rádio tocando, não busca e pode limpar o intervalo
+                if (metadataIntervalId) {
+                    clearInterval(metadataIntervalId);
+                    metadataIntervalId = null;
+                }
+                // Limpa a área de metadados se desejar
+                const metadataContentSpan = document.getElementById('metadata-content');
+                const metadataDetailsDiv = document.getElementById('metadata-details');
+                const albumCoverImg = document.getElementById('album-cover-img');
+                if(metadataContentSpan) metadataContentSpan.textContent = "Nenhuma rádio tocando.";
+                if(metadataDetailsDiv) metadataDetailsDiv.innerHTML = "";
+                if(albumCoverImg) albumCoverImg.style.display = 'none';
+                return;
+            }
+
+            fetch("{{ url_for('get_current_metadata_feed_route') }}")
+                .then(response => response.json())
+                .then(data => {
+                    updateMetadataDisplay(data);
+                })
+                .catch(error => {
+                    console.error("Erro na requisição de metadados:", error);
+                    const metadataContentSpan = document.getElementById('metadata-content');
+                    if(metadataContentSpan) metadataContentSpan.textContent = "Erro ao conectar para buscar metadados.";
+                });
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            // Só inicia o intervalo se uma rádio estiver de fato selecionada
+            const currentRadioNameElement = document.querySelector('.alert-success strong');
+            if (currentRadioNameElement && currentRadioNameElement.textContent.includes("Rádio:")) {
+                fetchAndUpdateMetadata(); // Busca inicial
+                if (metadataIntervalId) clearInterval(metadataIntervalId); // Limpa anterior se houver
+                metadataIntervalId = setInterval(fetchAndUpdateMetadata, 5000); // Atualiza a cada 1 SEGUNDO
+            } else {
+                // Garante que não haja intervalo rodando se nenhuma rádio estiver selecionada ao carregar
+                if (metadataIntervalId) {
+                    clearInterval(metadataIntervalId);
+                    metadataIntervalId = null;
+                }
+            }
+
+            // Adicional: se o usuário clicar em tocar uma rádio, a página recarrega
+            // e o DOMContentLoaded será disparado novamente, reiniciando o intervalo corretamente.
+            // Se o usuário clicar em parar, a página recarrega, e o intervalo não será iniciado.
+        });
+    </script>
+</body>
+</html>
